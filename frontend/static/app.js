@@ -1,0 +1,314 @@
+// app.js - ECharts 力导向图 + SSE 实时更新
+// ──────────────────────────────────────────────────────────────
+
+const API = "";  // 同域部署，留空即可
+
+// ── 状态 ────────────────────────────────────────────────────────
+let chart = null;
+let agents = [];         // [{id, name, color, is_human, last_speech}]
+let edges  = [];         // [{source, target, value}]
+let eventSource = null;
+let currentTick = 0;
+let maxTicks = 5;
+let isRunning = false;
+
+// ── ECharts 初始化 ───────────────────────────────────────────────
+function initChart() {
+  const dom = document.getElementById("echarts-graph");
+  chart = echarts.init(dom, "dark");
+  renderGraph();
+  window.addEventListener("resize", () => chart.resize());
+}
+
+// ── 构建 ECharts option ─────────────────────────────────────────
+function buildOption() {
+  const nodes = agents.map(a => ({
+    id:           a.id,
+    name:         a.name,
+    value:        a.last_speech || a.name,
+    symbolSize:   a.is_human ? 54 : 38,
+    symbol:       a.is_human ? "diamond" : "circle",
+    label: {
+      show: true,
+      fontSize: a.is_human ? 13 : 11,
+      fontWeight: a.is_human ? "bold" : "normal",
+      color: "#e2e8f0",
+      formatter: params => {
+        const agent = agents.find(x => x.id === params.id);
+        return agent ? agent.name : params.name;
+      }
+    },
+    itemStyle: {
+      color:       a.color || "#00d4ff",
+      borderColor: a.is_human ? "#FFD700" : "rgba(255,255,255,0.2)",
+      borderWidth: a.is_human ? 3 : 1,
+      shadowBlur:  a.is_human ? 30 : 12,
+      shadowColor: a.is_human ? "#FFD700" : (a.color || "#00d4ff"),
+    },
+    tooltip: {
+      formatter: () => {
+        const ag = agents.find(x => x.id === a.id);
+        if (!ag) return "";
+        return `<b style="color:${ag.color}">${ag.name}</b><br/>
+                <span style="font-size:11px;color:#94a3b8">${ag.last_speech || "等待发言..."}</span>`;
+      }
+    },
+  }));
+
+  const links = edges.map(e => ({
+    source:    e.source,
+    target:    e.target,
+    value:     e.value,
+    lineStyle: {
+      width:   Math.max(1, e.value * 1.4),
+      color:   interpolateColor(e.value),
+      opacity: Math.min(0.9, 0.3 + e.value * 0.1),
+      curveness: 0.15,
+    },
+  }));
+
+  return {
+    backgroundColor: "transparent",
+    tooltip: { trigger: "item", confine: true },
+    animationDurationUpdate: 800,
+    animationEasingUpdate:   "quinticInOut",
+    series: [{
+      type:          "graph",
+      layout:        "force",
+      roam:          true,
+      draggable:     true,
+      data:          nodes,
+      links:         links,
+      force: {
+        repulsion:   280,
+        attraction:  0.04,
+        gravity:     0.1,
+        edgeLength:  [120, 280],
+        layoutAnimation: true,
+      },
+      emphasis: {
+        focus: "adjacency",
+        lineStyle: { width: 8 },
+      },
+      lineStyle: { color: "source", curveness: 0.15 },
+      label: { position: "bottom" },
+      edgeLabel: {
+        show: false,
+      },
+    }],
+  };
+}
+
+// 根据权重插值颜色：冷→暖（低引力蓝 → 高引力橙红）
+function interpolateColor(value) {
+  const t = Math.min(1, value / 10);
+  const r = Math.round(0   + t * 255);
+  const g = Math.round(212 - t * 130);
+  const b = Math.round(255 - t * 220);
+  return `rgb(${r},${g},${b})`;
+}
+
+function renderGraph() {
+  if (!chart) return;
+  chart.setOption(buildOption(), { replaceMerge: ["series"] });
+}
+
+// ── SSE 事件监听 ────────────────────────────────────────────────
+function startEventStream() {
+  if (eventSource) { eventSource.close(); }
+  eventSource = new EventSource(`${API}/api/sandbox/stream`);
+
+  eventSource.onmessage = (e) => {
+    const event = JSON.parse(e.data);
+    handleEvent(event);
+  };
+
+  eventSource.onerror = () => {
+    log("⚠", "system", "SSE 连接中断，切换轮询...", "#ef4444");
+    eventSource.close();
+    startPolling();
+  };
+}
+
+function handleEvent(event) {
+  switch (event.type) {
+
+    case "init":
+      document.getElementById("topic-text").textContent = event.topic;
+      agents = event.agents.map(a => ({ ...a, last_speech: "" }));
+      edges  = [];
+      renderGraph();
+      log("🌏", "系统", `世界议题已投放 → ${event.topic}`, "#7c3aed");
+      break;
+
+    case "tick_start":
+      currentTick = event.tick;
+      maxTicks    = event.max_ticks;
+      updateProgress();
+      log("⚡", "系统", `第 ${event.tick}/${event.max_ticks} 回合开始`, "#00d4ff");
+      document.getElementById("tick-label").textContent =
+        `TICK ${event.tick}/${event.max_ticks}`;
+      break;
+
+    case "speech":
+      // 更新对应 agent 的发言
+      const ag = agents.find(a => a.id === event.agent_id);
+      if (ag) ag.last_speech = event.speech;
+      renderGraph();
+      const agentColor = ag ? ag.color : "#00d4ff";
+      log("💬", event.agent_name, event.speech, agentColor,
+          `→ 认同 ${event.agree_with_id}`);
+      break;
+
+    case "matrix_update":
+      edges = event.edges;
+      renderGraph();
+      break;
+
+    case "evolution_complete":
+      log("🎉", "系统", "演化完成！部落已涌现！", "#FFD700");
+      showTribeModal(event.tribes);
+      document.getElementById("btn-start").disabled = false;
+      document.getElementById("btn-start").textContent = "▶ 再来一轮";
+      break;
+
+    case "heartbeat":
+      // 保活，忽略
+      break;
+  }
+}
+
+// ── Terminal 日志 ───────────────────────────────────────────────
+function log(icon, name, speech, color = "#94a3b8", sub = "") {
+  const terminal = document.getElementById("terminal-log");
+  const now = new Date().toLocaleTimeString("zh-CN", { hour12: false });
+  const entry = document.createElement("div");
+  entry.className = "log-entry";
+  entry.innerHTML = `
+    <span class="log-time">${now}</span>
+    <span class="log-name" style="color:${color}">${icon} ${name}</span>
+    <span class="log-speech">${speech}</span>
+    ${sub ? `<span class="log-agree">${sub}</span>` : ""}
+  `;
+  terminal.appendChild(entry);
+  terminal.scrollTop = terminal.scrollHeight;
+}
+
+// ── 进度条 ───────────────────────────────────────────────────────
+function updateProgress() {
+  const pct = maxTicks > 0 ? (currentTick / maxTicks) * 100 : 0;
+  document.getElementById("progress-bar").style.width = pct + "%";
+}
+
+// ── 备用轮询（SSE 失败时） ──────────────────────────────────────
+let pollTimer = null;
+function startPolling() {
+  pollTimer = setInterval(async () => {
+    try {
+      const resp = await fetch(`${API}/api/sandbox/state`);
+      const data = await resp.json();
+      agents = data.agents || agents;
+      edges  = data.edges  || edges;
+      currentTick = data.current_tick;
+      renderGraph();
+      updateProgress();
+      if (data.finished) { clearInterval(pollTimer); }
+    } catch (e) { /* 静默 */ }
+  }, 1500);
+}
+
+// ── 部落弹窗 ────────────────────────────────────────────────────
+function showTribeModal(tribes) {
+  const modal = document.getElementById("tribe-modal");
+  const bodyEl = document.getElementById("tribe-body");
+  const namesEl = document.getElementById("tribe-member-names");
+
+  // 找到包含真实用户的部落
+  const humanTribe = tribes.find(t => t.has_human);
+  const allPartners = humanTribe
+    ? humanTribe.members.filter(m => !m.is_human)
+    : [];
+
+  if (humanTribe) {
+    bodyEl.innerHTML = `您的分身在沙盒中经历了 <b>${maxTicks}</b> 轮激烈辩论，<br/>
+      最终与 <b style="color:#00d4ff">${allPartners.map(m => m.name).join("、")}</b><br/>
+      因底层价值观共振，结成了<br/>
+      <b style="color:#FFD700;font-size:18px">【${humanTribe.tribe_name}】</b>`;
+  } else {
+    bodyEl.innerHTML = `演化完成！共涌现 <b>${tribes.length}</b> 个思想部落。`;
+  }
+
+  namesEl.innerHTML = "";
+  tribes.forEach(tribe => {
+    tribe.members.forEach(m => {
+      const tag = document.createElement("span");
+      tag.className = "tribe-tag" + (m.is_human ? " human" : "");
+      tag.style.borderColor = m.color;
+      tag.style.color = m.color;
+      tag.textContent = (m.is_human ? "★ " : "") + m.name;
+      namesEl.appendChild(tag);
+    });
+  });
+
+  modal.classList.add("show");
+}
+
+function closeTribeModal() {
+  document.getElementById("tribe-modal").classList.remove("show");
+}
+
+// ── 启动演化 ────────────────────────────────────────────────────
+async function startEvolution() {
+  const btn = document.getElementById("btn-start");
+  btn.disabled = true;
+  btn.textContent = "演化中...";
+
+  // 如果未初始化，先进 demo 模式
+  try {
+    const resp = await fetch(`${API}/api/sandbox/start`, { method: "POST" });
+    if (!resp.ok) {
+      const err = await resp.json();
+      if (err.detail && err.detail.includes("登录")) {
+        window.location.href = `${API}/auth/demo`;
+        return;
+      }
+    }
+  } catch (e) {
+    log("⚠", "系统", "无法连接后端，请确保服务已启动", "#ef4444");
+    btn.disabled = false;
+    btn.textContent = "▶ 开始演化";
+    return;
+  }
+
+  startEventStream();
+}
+
+async function resetSandbox() {
+  await fetch(`${API}/api/sandbox/reset`);
+  agents = []; edges = []; currentTick = 0;
+  renderGraph();
+  document.getElementById("terminal-log").innerHTML = "";
+  document.getElementById("progress-bar").style.width = "0%";
+  document.getElementById("tick-label").textContent = "TICK 0/5";
+  document.getElementById("btn-start").disabled = false;
+  document.getElementById("btn-start").textContent = "▶ 开始演化";
+  closeTribeModal();
+  log("🔄", "系统", "沙盒已重置", "#64748b");
+}
+
+// ── 入口 ────────────────────────────────────────────────────────
+document.addEventListener("DOMContentLoaded", async () => {
+  initChart();
+  log("🚀", "系统", "巴别塔沙盒已就绪，等待演化指令...", "#00d4ff");
+
+  // 拉一次状态，确认是否已初始化
+  try {
+    const resp = await fetch(`${API}/api/sandbox/state`);
+    const data = await resp.json();
+    if (data.agents && data.agents.length) {
+      agents = data.agents;
+      edges  = data.edges || [];
+      renderGraph();
+    }
+  } catch (e) { /* 冷启动，忽略 */ }
+});
