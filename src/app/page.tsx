@@ -13,7 +13,7 @@ import { Separator } from "@/components/ui/separator";
 
 import EChartsGraph, { Agent, Edge } from "@/components/EChartsGraph";
 
-const API = "http://localhost:8000";
+const API = ""; // 使用 Next.js 内置 API Routes（相对路径）
 
 interface Tribe {
   tribe_id: number;
