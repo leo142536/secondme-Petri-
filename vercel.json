@@ -7,6 +7,10 @@
     {
       "source": "/auth/:match*",
       "destination": "/api/index.py"
+    },
+    {
+      "source": "/openapi.json",
+      "destination": "/api/index.py"
     }
   ]
 }
