@@ -22,14 +22,13 @@ from agents import fetch_secondme_profile, get_mock_human_agent
 from engine import get_sandbox
 
 
-app = FastAPI(title="巴别塔沙盒", version="1.0.0")
+app = FastAPI(title="Petri 智能蜂巢实验", version="1.0.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
 )
 
-# ── 静态文件 ─────────────────────────────────────────────────────
-app.mount("/static", StaticFiles(directory="../frontend/static"), name="static")
+# 已移除前端页面的静态服务，将交由 Vercel CDN 托管
 
 
 # ── SecondMe OAuth ───────────────────────────────────────────────
@@ -131,7 +130,8 @@ async def sandbox_state():
         "tribes":       sandbox.tribes,
         "agents": [
             {"id": a.id, "name": a.name, "color": a.color,
-             "last_speech": a.last_speech, "is_human": a.is_human}
+             "last_speech": a.last_speech, "is_human": a.is_human,
+             "avatar": a.avatar}
             for a in sandbox.agents
         ],
     })
@@ -145,12 +145,44 @@ async def reset_sandbox():
     return {"status": "reset"}
 
 
-# ── 主页 ──────────────────────────────────────────────────────────
+@app.post("/api/sandbox/inject")
+async def inject_agent(request: Request):
+    """
+    运行时注入外部 Agent（两种模式）：
+    1. SecondMe token 模式：传 {"access_token": "..."} → 拉取真实 profile
+    2. 手动模式：传 {"name": "...", "profile": "..."} → 直接创建
+    外部 Agent 进来后会替换掉最边缘的虚拟 Agent。
+    """
+    from agents import Agent, _assign_avatars
+    sandbox = get_sandbox()
+    if not sandbox.agents:
+        raise HTTPException(400, "沙盒未初始化")
 
-@app.get("/", response_class=HTMLResponse)
-async def index():
-    with open("../frontend/index.html", encoding="utf-8") as f:
-        return f.read()
+    body = await request.json()
+
+    if "access_token" in body:
+        # SecondMe 模式：拉取真人 profile
+        agent = await fetch_secondme_profile(body["access_token"])
+        agent.is_human = True
+    else:
+        # 手动模式
+        name = body.get("name", "匿名观察者")
+        profile = body.get("profile", "一个好奇的旁观者，想参与讨论但没有明确立场。")
+        avatars = _assign_avatars(1)
+        agent = Agent(
+            id="external_" + str(len(sandbox._external_agents)),
+            name=name,
+            profile=profile,
+            color=body.get("color", "#FFD700"),
+            is_human=True,
+            avatar=avatars[0] if avatars else "",
+        )
+
+    sandbox.inject_external_agent(agent)
+    return {"status": "queued", "name": agent.name, "message": "将在下一轮替换最边缘的虚拟 Agent"}
+
+
+# ── 主页由 Vercel Static CDN 提供 ──────────────────────────────
 
 
 # ── 启动 ──────────────────────────────────────────────────────────

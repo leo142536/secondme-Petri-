@@ -32,6 +32,13 @@ class AffinityMatrix:
         self.weights[i][j] = min(self.weights[i][j] + 1, 10)
         self.weights[j][i] = min(self.weights[j][i] + 1, 10)  # 引力是双向的
 
+    def add_agent(self) -> None:
+        """扩展矩阵以支持新加入的 Agent"""
+        self.n += 1
+        for row in self.weights:
+            row.append(0.0)
+        self.weights.append([0.0] * self.n)
+
     def to_edges(self, agent_ids: list[str]) -> list[dict]:
         """转换为 ECharts links 格式，只返回权重 > 0 的边"""
         edges = []
@@ -78,6 +85,12 @@ class AffinityMatrix:
                         tribe_map = {k: (new if v == old else v) for k, v in tribe_map.items()}
 
         return tribe_map
+
+    def agent_total(self, idx: int, n: int) -> float:
+        """返回某个 Agent 与所有其他 Agent 的亲密度总和（越低越边缘）"""
+        if idx >= n or idx >= len(self.weights):
+            return 0.0
+        return sum(self.weights[idx][j] for j in range(min(n, len(self.weights[idx]))) if j != idx)
 
     def as_2d_list(self) -> list[list[float]]:
         return self.weights

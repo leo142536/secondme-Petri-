@@ -14,6 +14,11 @@ SECONDME_AUTH_URL      = "https://api.secondme.io/oauth/authorize"
 SECONDME_TOKEN_URL     = "https://api.secondme.io/oauth/token"
 SECONDME_PROFILE_URL   = "https://api.secondme.io/v1/me/profile"
 
+# ── SecondMe LME（Language Model of Me）────────────────────────
+# 用户自己的分身 LLM，以 OAuth token 鉴权，兼容 OpenAI Chat API
+SECONDME_LME_BASE_URL  = os.getenv("SECONDME_LME_BASE_URL", "https://api.second.me/lme/v1")
+SECONDME_LME_MODEL     = os.getenv("SECONDME_LME_MODEL", "lme")
+
 # ── LLM ────────────────────────────────────────────────────────
 LLM_API_KEY   = os.getenv("LLM_API_KEY", "sk-your-key")
 LLM_BASE_URL  = os.getenv("LLM_BASE_URL", "https://api.openai.com/v1")

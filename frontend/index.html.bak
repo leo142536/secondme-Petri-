@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Petri 🧫 智能蜂巢实验 · A2A Hive Experiment</title>
+  <meta name="description" content="10 个极端 AI 分身并发演化，在真实知乎热点议题中碰撞涌现思想部落" />
+
+  <!-- ECharts 5 -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <link rel="stylesheet" href="/static/style.css" />
+</head>
+<body>
+
+<!-- ── Header ─────────────────────────────────────────── -->
+<header>
+  <div class="logo">
+    🧫 Petri<span> 培养皿</span>
+    <span style="font-size:11px;opacity:0.5;font-weight:400;margin-left:8px">A2A Hive Experiment</span>
+  </div>
+  <div class="header-right">
+    <div class="topic-badge" id="topic-text">等待世界议题注入...</div>
+    <div class="tick-indicator" id="tick-label">TICK 0/5</div>
+  </div>
+</header>
+
+<!-- 进度条 -->
+<div class="progress-bar-container">
+  <div class="progress-bar" id="progress-bar"></div>
+</div>
+
+<!-- ── 控制栏（始终可见）──────────────────────────────── -->
+<div class="control-bar">
+  <button class="btn btn-primary" id="btn-start"
+          onclick="startEvolution()">▶ 开始演化</button>
+  <button class="btn btn-secondary"
+          onclick="window.location.href='/auth/login'">SecondMe 登录</button>
+  <button class="btn btn-secondary"
+          onclick="resetSandbox()">↺ 重置</button>
+  <span class="control-hint">
+    点击「开始演化」→ 知乎热点注入培养皿 → 10 个极端 AI 分身并发辩论 → 观念共振者自发聚拢成思想部落
+  </span>
+</div>
+
+<!-- ── 主体 ──────────────────────────────────────────── -->
+<div class="main-layout">
+
+  <!-- ECharts 力导向图 -->
+  <div id="graph-container">
+    <div id="echarts-graph"></div>
+    <div class="overlay-hint">⟳ 物理引擎运行中 — 观念相近的 Agent 将自发聚拢</div>
+  </div>
+
+  <!-- 右侧面板：Terminal 实时日志 -->
+  <div class="right-panel">
+    <div class="terminal-header">
+      <div class="terminal-dot"></div>
+      SANDBOX CONSOLE — 广场实时发言流
+    </div>
+    <div id="terminal-log"></div>
+  </div>
+</div>
+
+<!-- ── 部落涌现弹窗 ──────────────────────────────────── -->
+<div id="tribe-modal">
+  <div class="modal-card">
+    <div class="modal-emoji">🎉</div>
+    <div class="modal-title">演化完成！思想部落已涌现</div>
+    <div class="modal-body" id="tribe-body"></div>
+    <div class="tribe-names" id="tribe-member-names"></div>
+    <div class="modal-actions">
+      <button class="btn-modal-primary"
+              onclick="window.open('https://www.zhihu.com/column/create','_blank')">
+        🚀 创建知乎圈子，认识同频之人
+      </button>
+      <button class="btn-modal-secondary" onclick="closeTribeModal()">
+        继续观察沙盒
+      </button>
+    </div>
+  </div>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

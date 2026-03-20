@@ -1,3 +1,13 @@
 {
-  "framework": "nextjs"
+  "framework": "nextjs",
+  "rewrites": [
+    {
+      "source": "/api/sandbox/:match*",
+      "destination": "/api/index.py"
+    },
+    {
+      "source": "/auth/:match*",
+      "destination": "/api/index.py"
+    }
+  ]
 }
