@@ -64,7 +64,7 @@ async def _fetch_via_official_api() -> str | None:
 
     async with httpx.AsyncClient(timeout=8.0) as client:
         resp = await client.get(
-            f"{ZHIHU_BASE_URL}/hackathon/hot-list",
+            f"{ZHIHU_BASE_URL}/openapi/billboard/list",
             headers=headers,
         )
         resp.raise_for_status()
