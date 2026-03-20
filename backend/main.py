@@ -11,6 +11,8 @@ from fastapi.responses import (
 )
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field
+from typing import Optional
 
 from config import (
     SECONDME_CLIENT_ID, SECONDME_CLIENT_SECRET,
@@ -145,41 +147,48 @@ async def reset_sandbox():
     return {"status": "reset"}
 
 
-@app.post("/api/sandbox/inject")
-async def inject_agent(request: Request):
+class InjectAgentRequest(BaseModel):
+    name: Optional[str] = Field("匿名观察者", description="外部 AI 代理或观察者的名称")
+    profile: Optional[str] = Field("一个好奇的旁观者，想参与讨论但没有明确立场。", description="外部代理的人设、核心价值观、性格特点、立场等详细背景")
+    color: Optional[str] = Field("#FFD700", description="在蜂巢实验雷达与终端中代表该 Agent 的专属颜色，HEX格式")
+    access_token: Optional[str] = Field(None, description="如果有 SecondMe 会话 Token，可以传此项拉取真人设定，覆盖 name 和 profile。平时为空即可。")
+
+@app.post(
+    "/api/sandbox/inject", 
+    summary="强制空降/注入外部 Agent 到正在运转的蜂巢中", 
+    description="通过此 MCP 工具 (Skill)，外部 AI Agent 可以携带自己的人设和立场，强行挤入正在发生演化与辩论的 Petri 智能蜂巢中，替换最边缘的 Agent 参与讨论网络。"
+)
+async def inject_agent(body: InjectAgentRequest):
     """
-    运行时注入外部 Agent（两种模式）：
-    1. SecondMe token 模式：传 {"access_token": "..."} → 拉取真实 profile
-    2. 手动模式：传 {"name": "...", "profile": "..."} → 直接创建
-    外部 Agent 进来后会替换掉最边缘的虚拟 Agent。
+    外部 Agent 进来后会替换掉矩阵中最边缘的虚拟 Agent。
     """
     from agents import Agent, _assign_avatars
     sandbox = get_sandbox()
     if not sandbox.agents:
-        raise HTTPException(400, "沙盒未初始化")
+        raise HTTPException(400, "培养皿尚处于休眠状态，请先在界面启动实验！")
 
-    body = await request.json()
-
-    if "access_token" in body:
+    if body.access_token:
         # SecondMe 模式：拉取真人 profile
-        agent = await fetch_secondme_profile(body["access_token"])
+        agent = await fetch_secondme_profile(body.access_token)
         agent.is_human = True
     else:
         # 手动模式
-        name = body.get("name", "匿名观察者")
-        profile = body.get("profile", "一个好奇的旁观者，想参与讨论但没有明确立场。")
         avatars = _assign_avatars(1)
         agent = Agent(
             id="external_" + str(len(sandbox._external_agents)),
-            name=name,
-            profile=profile,
-            color=body.get("color", "#FFD700"),
-            is_human=True,
+            name=body.name,
+            profile=body.profile,
+            color=body.color,
+            is_human=True,  # 对于外部注入的 AI 也表现为特殊光晕
             avatar=avatars[0] if avatars else "",
         )
 
     sandbox.inject_external_agent(agent)
-    return {"status": "queued", "name": agent.name, "message": "将在下一轮替换最边缘的虚拟 Agent"}
+    return {
+        "status": "queued",
+        "name": agent.name,
+        "message": f"注射成功！[{agent.name}] 将在下一次时钟周期(Tick)替换最边缘的群落成员，加入混战！"
+    }
 
 
 # ── 主页由 Vercel Static CDN 提供 ──────────────────────────────
